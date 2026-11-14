@@ -1,0 +1,373 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>TREC Mailer | Campaigns</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+
+        <div class="logo">
+            <h2>TREC<span>MAILER</span></h2>
+            <p>Business Outreach Platform</p>
+        </div>
+
+        <nav>
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('contacts') }}">Contacts</a>
+            <a href="{{ url_for('campaigns') }}" class="active">Campaigns</a>
+        </nav>
+
+        <div class="sidebar-footer">
+            TREC Business Tools
+        </div>
+
+    </aside>
+
+
+    <!-- MAIN CONTENT -->
+    <main class="main">
+
+        <!-- TOPBAR -->
+        <header class="topbar">
+            <h2>Campaigns</h2>
+            <div class="profile">Admin</div>
+        </header>
+
+
+        <!-- PAGE HEADING -->
+        <section class="page-heading">
+            <h1>Campaign Management</h1>
+            <p>Create and manage your outreach campaigns.</p>
+        </section>
+
+
+        <!-- FLASH MESSAGES -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="notice {{ category }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+
+        <!-- CREATE CAMPAIGN -->
+        <section class="content-card">
+
+            <div class="section-heading">
+                <div>
+                    <h2>Create New Campaign</h2>
+                    <p>Prepare your email campaign. It will be saved as a draft.</p>
+                </div>
+            </div>
+
+
+            <form action="{{ url_for('create_campaign') }}"
+                  method="POST"
+                  class="campaign-form">
+
+
+                <!-- CAMPAIGN NAME -->
+                <div class="form-group">
+                    <label>Campaign Name</label>
+
+                    <input
+                        type="text"
+                        name="campaign_name"
+                        placeholder="Example: Resort Introduction Campaign"
+                        required
+                    >
+                </div>
+
+
+                <!-- EMAIL SUBJECT -->
+                <div class="form-group">
+                    <label>Email Subject</label>
+
+                    <input
+                        type="text"
+                        name="subject"
+                        placeholder="Example: Digital Marketing for {{resort}}"
+                        required
+                    >
+                </div>
+
+
+                <!-- EMAIL MESSAGE -->
+                <div class="form-group">
+                    <label>Email Message</label>
+
+                    <textarea
+                        name="body"
+                        rows="7"
+                        placeholder="Hello {{name}},
+
+We would love to introduce TREC's digital marketing services to {{resort}}.
+
+Please feel free to contact us at {{email}}.
+
+Regards,
+Team TREC"
+                        required
+                    ></textarea>
+                </div>
+
+
+                <!-- PERSONALIZATION HELP -->
+                <div class="personalization-help">
+
+                    <h3>Personalization Fields</h3>
+
+                    <p>
+                        Use these placeholders to automatically personalize
+                        each recipient's email preview.
+                    </p>
+
+                    <div class="placeholder-list">
+                        <span><code>{{ '{{name}}' }}</code> Contact Name</span>
+                        <span><code>{{ '{{resort}}' }}</code> Resort Name</span>
+                        <span><code>{{ '{{email}}' }}</code> Email Address</span>
+                    </div>
+
+                </div>
+
+
+                <!-- SELECT RECIPIENTS -->
+                <div class="recipient-heading">
+
+                    <div>
+                        <h3>Select Recipients</h3>
+                        <p>Choose the contacts for this campaign.</p>
+                    </div>
+
+                    <label class="select-all-label">
+                        <input type="checkbox" id="selectAll">
+                        Select All
+                    </label>
+
+                </div>
+
+
+                <!-- RECIPIENT LIST -->
+                {% if contacts %}
+
+                    <div class="recipient-list">
+
+                        {% for contact in contacts %}
+
+                            <label class="recipient-item">
+
+                                <input
+                                    type="checkbox"
+                                    name="recipients"
+                                    value="{{ contact.id }}"
+                                    class="contact-checkbox"
+                                >
+
+                                <div>
+                                    <strong>{{ contact.resort }}</strong>
+
+                                    <span>
+                                        {{ contact.name }} · {{ contact.email }}
+                                    </span>
+                                </div>
+
+                            </label>
+
+                        {% endfor %}
+
+                    </div>
+
+                {% else %}
+
+                    <div class="empty-state">
+                        <h3>No contacts available</h3>
+
+                        <p>
+                            Import contacts before creating a campaign.
+                        </p>
+
+                        <a href="{{ url_for('contacts') }}">
+                            Go to Contacts →
+                        </a>
+                    </div>
+
+                {% endif %}
+
+
+                <!-- SAVE BUTTON -->
+                <button
+                    type="submit"
+                    class="primary-button"
+                    {% if not contacts %}disabled{% endif %}
+                >
+                    Save Campaign as Draft
+                </button>
+
+            </form>
+
+        </section>
+
+
+
+        <!-- SAVED CAMPAIGNS -->
+        <section class="content-card">
+
+            <div class="section-heading">
+                <div>
+                    <h2>Saved Campaigns</h2>
+                    <p>View and manage your previously created campaigns.</p>
+                </div>
+            </div>
+
+
+            {% if campaigns %}
+
+                <div class="table-wrap">
+
+                    <table>
+
+                        <thead>
+                            <tr>
+                                <th>Campaign Name</th>
+                                <th>Email Subject</th>
+                                <th>Recipients</th>
+                                <th>Status</th>
+                                <th>Created At</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+
+
+                        <tbody>
+
+                            {% for campaign in campaigns %}
+
+                                <tr>
+
+                                    <td>
+                                        {{ campaign.campaign_name }}
+                                    </td>
+
+                                    <td>
+                                        {{ campaign.subject }}
+                                    </td>
+
+                                    <td>
+                                        {{ campaign.recipient_count }}
+                                    </td>
+
+                                    <td>
+                                        <span class="status-draft">
+                                            {{ campaign.status }}
+                                        </span>
+                                    </td>
+
+                                    <td>
+                                        {{ campaign.created_at }}
+                                    </td>
+
+                                    <td>
+                                        <a
+                                            href="{{ url_for('campaign_preview', campaign_id=campaign.id) }}"
+                                            class="preview-link"
+                                        >
+                                            View Preview →
+                                        </a>
+                                    </td>
+
+                                </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            {% else %}
+
+                <div class="empty-state">
+
+                    <h3>No campaigns created yet</h3>
+
+                    <p>
+                        Your saved campaigns will appear here.
+                    </p>
+
+                </div>
+
+            {% endif %}
+
+        </section>
+
+    </main>
+
+</div>
+
+
+
+<!-- SELECT ALL SCRIPT -->
+<script>
+
+    const selectAll = document.getElementById("selectAll");
+
+    const checkboxes = document.querySelectorAll(
+        ".contact-checkbox"
+    );
+
+
+    if (selectAll) {
+
+        selectAll.addEventListener("change", function () {
+
+            checkboxes.forEach(function (checkbox) {
+
+                checkbox.checked = selectAll.checked;
+
+            });
+
+        });
+
+    }
+
+
+    checkboxes.forEach(function (checkbox) {
+
+        checkbox.addEventListener("change", function () {
+
+            if (!checkbox.checked) {
+
+                selectAll.checked = false;
+
+            } else {
+
+                selectAll.checked = [...checkboxes].every(
+                    item => item.checked
+                );
+
+            }
+
+        });
+
+    });
+
+</script>
+
+</body>
+</html>

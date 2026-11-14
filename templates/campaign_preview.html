@@ -1,0 +1,273 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TREC Mailer | Campaign Preview</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+<div class="app">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+        <div class="logo">
+            <h2>TREC<span>MAILER</span></h2>
+            <p>Business Outreach Platform</p>
+        </div>
+
+        <nav>
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('contacts') }}">Contacts</a>
+            <a href="{{ url_for('campaigns') }}" class="active">Campaigns</a>
+        </nav>
+
+        <div class="sidebar-footer">
+            TREC Business Tools
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main">
+
+        <header class="topbar">
+            <h2>Email Preview</h2>
+            <div class="profile">Admin</div>
+        </header>
+
+        <section class="page-heading">
+            <h1>TEST NEW PREVIEW PAGE 123</h1>
+            <p>
+                Review each personalized email before campaign delivery.
+            </p>
+        </section>
+
+        <!-- NAVIGATION -->
+        <div class="preview-navigation">
+            <a href="{{ url_for('campaigns') }}" class="clear-button">
+                ← Back to Campaigns
+            </a>
+
+            <a href="{{ url_for('campaign_history',
+                                campaign_id=campaign.id) }}"
+               class="secondary-button">
+                View Campaign History
+            </a>
+        </div>
+
+        <!-- CAMPAIGN DETAILS -->
+        <section class="content-card">
+
+            <div class="section-heading">
+                <div>
+                    <h2>{{ campaign.campaign_name or campaign.name }}</h2>
+
+                    <p>
+                        Campaign status:
+                        <span class="status-draft">
+                            {{ campaign.status }}
+                        </span>
+                    </p>
+                </div>
+
+                <div class="preview-count">
+                    {{ previews|length }} Recipients
+                </div>
+            </div>
+
+            <div class="preview-email-details">
+                <div class="preview-field">
+                    <strong>Eligible recipients:</strong>
+                    <span>{{ eligible_count }}</span>
+                </div>
+
+                <div class="preview-field">
+                    <strong>Previously sent:</strong>
+                    <span>{{ delivery_counts.sent or 0 }}</span>
+                </div>
+
+                <div class="preview-field">
+                    <strong>Previously failed:</strong>
+                    <span>{{ delivery_counts.failed or 0 }}</span>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- SENDING REQUIREMENTS -->
+        <section class="content-card">
+            <h2>Sending Requirements</h2>
+
+            {% if public_url_ready %}
+                <p>
+                    HTTPS unsubscribe URL is configured.
+                </p>
+            {% else %}
+                <p style="color:#b45309;">
+                    Campaign sending is currently disabled.
+                    A public HTTPS unsubscribe URL must be configured
+                    before sending.
+                </p>
+            {% endif %}
+
+            <p>
+                Only contacts with verified email permission,
+                Approved review status, and no active unsubscribe
+                request are eligible.
+            </p>
+        </section>
+
+        <!-- PERSONALIZED EMAIL PREVIEWS -->
+        {% if previews %}
+
+            {% for preview in previews %}
+
+                <section class="content-card email-preview-card">
+
+                    <div class="section-heading">
+                        <div>
+                            <h2>{{ preview.resort or "Resort" }}</h2>
+                            <p>Contact: {{ preview.name or "Not provided" }}</p>
+                        </div>
+
+                        <span class="status-review">
+                            Preview {{ loop.index }}
+                        </span>
+                    </div>
+
+                    <div class="preview-email-details">
+
+                        <div class="preview-field">
+                            <strong>To:</strong>
+                            <span>{{ preview.email }}</span>
+                        </div>
+
+                        <div class="preview-field">
+                            <strong>Subject:</strong>
+                            <span>{{ preview.subject }}</span>
+                        </div>
+
+                        <div class="preview-field">
+                            <strong>Permission:</strong>
+
+                            {% if preview.approved %}
+                                <span style="color:green;">
+                                    Approved
+                                </span>
+                            {% else %}
+                                <span style="color:#b45309;">
+                                    Not eligible
+                                </span>
+                            {% endif %}
+                        </div>
+
+                    </div>
+
+                    <div class="preview-message">
+                        <div class="preview-message-heading">
+                            Email Message
+                        </div>
+
+                        <div class="preview-message-content">{{ preview.body }}</div>
+                    </div>
+
+                    {% if not preview.approved %}
+                        <p style="color:#b45309;">
+                            This contact will be skipped during sending.
+                            Verify permission and approval before including
+                            this recipient.
+                        </p>
+                    {% endif %}
+
+                    <div class="preview-footer">
+                        <span>
+                            Personalized using saved contact information
+                        </span>
+                        <span>Draft Preview</span>
+                    </div>
+
+                </section>
+
+            {% endfor %}
+
+        {% else %}
+
+            <section class="content-card empty-state">
+                <h3>No recipients found</h3>
+                <p>This campaign does not have any saved recipients.</p>
+
+                <a href="{{ url_for('campaigns') }}">
+                    Return to Campaigns →
+                </a>
+            </section>
+
+        {% endif %}
+
+        <!-- FINAL SEND CONFIRMATION -->
+        {% if previews and eligible_count > 0 %}
+
+            <section class="content-card">
+
+                <h2>Ready to Send?</h2>
+
+                <p>
+                    You are about to send this campaign individually
+                    to {{ eligible_count }} eligible recipient(s).
+                </p>
+
+                {% if not public_url_ready %}
+                    <p style="color:#b45309;">
+                        Sending is unavailable until HTTPS unsubscribe
+                        configuration is completed.
+                    </p>
+                {% endif %}
+
+                <form method="POST"
+                      action="{{ url_for('send_campaign',
+                                         campaign_id=campaign.id) }}"
+                      onsubmit="return confirm(
+                        'Have you reviewed the recipients and verified their permission? Send this campaign now?'
+                      );">
+
+                    <input type="hidden"
+                           name="confirm_send"
+                           value="yes">
+
+                    <button type="submit"
+                            class="primary-button"
+                            {% if not public_url_ready %}disabled{% endif %}>
+                        Send Campaign
+                    </button>
+
+                </form>
+
+            </section>
+
+        {% elif previews %}
+
+            <section class="content-card">
+                <h2>Campaign cannot be sent</h2>
+                <p>
+                    There are no eligible recipients.
+                    Review contact permissions before sending.
+                </p>
+            </section>
+
+        {% endif %}
+
+        <!-- BOTTOM NAVIGATION -->
+        <div class="preview-bottom">
+            <a href="{{ url_for('campaigns') }}"
+               class="secondary-button">
+                Back to Campaigns
+            </a>
+        </div>
+
+    </main>
+</div>
+</body>
+</html>

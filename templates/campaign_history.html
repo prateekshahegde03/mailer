@@ -1,0 +1,98 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TREC Mailer | Campaign History</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="app">
+
+    <aside class="sidebar">
+        <div class="logo">
+            <h2>TREC<span>MAILER</span></h2>
+            <p>Business Outreach Platform</p>
+        </div>
+
+        <nav>
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('contacts') }}">Contacts</a>
+            <a href="{{ url_for('campaigns') }}" class="active">Campaigns</a>
+        </nav>
+
+        <div class="sidebar-footer">TREC Business Tools</div>
+    </aside>
+
+    <main class="main">
+
+        <header class="topbar">
+            <h2>Campaign History</h2>
+            <div class="profile">Admin</div>
+        </header>
+
+        <section class="page-heading">
+            <h1>{{ campaign.campaign_name }}</h1>
+            <p>Individual recipient delivery records.</p>
+        </section>
+
+        <section class="content-card">
+            <h2>Delivery Summary</h2>
+
+            <p>Total attempts: {{ counts.total or 0 }}</p>
+            <p>Sent: {{ counts.sent or 0 }}</p>
+            <p>Failed: {{ counts.failed or 0 }}</p>
+            <p>Skipped: {{ counts.skipped or 0 }}</p>
+        </section>
+
+        <section class="content-card">
+            <div class="section-heading">
+                <h2>Recipient History</h2>
+                <a href="{{ url_for('campaigns') }}" class="clear-button">
+                    Back to Campaigns
+                </a>
+            </div>
+
+            {% if logs %}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Contact</th>
+                            <th>Resort</th>
+                            <th>Email</th>
+                            <th>Status</th>
+                            <th>Details</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for log in logs %}
+                        <tr>
+                            <td>{{ log.name }}</td>
+                            <td>{{ log.resort }}</td>
+                            <td>{{ log.email }}</td>
+                            <td>{{ log.status }}</td>
+                            <td>{{ log.error_message or '-' }}</td>
+                            <td>{{ log.sent_at }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <h3>No delivery records yet</h3>
+                <p>This campaign has not been processed.</p>
+            </div>
+            {% endif %}
+        </section>
+
+    </main>
+</div>
+
+</body>
+</html>

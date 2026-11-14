@@ -1,0 +1,370 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TREC Mailer | Contacts</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+        <div class="logo">
+            <h2>TREC<span>MAILER</span></h2>
+            <p>Business Outreach Platform</p>
+        </div>
+
+        <nav>
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('contacts') }}" class="active">Contacts</a>
+            <a href="{{ url_for('campaigns') }}">Campaigns</a>
+        </nav>
+
+        <div class="sidebar-footer">TREC Business Tools</div>
+    </aside>
+
+
+    <!-- MAIN CONTENT -->
+    <main class="main">
+
+        <header class="topbar">
+            <h2>Contacts</h2>
+            <div class="profile">Admin</div>
+        </header>
+
+
+        <!-- PAGE HEADING -->
+        <section class="page-heading">
+            <h1>Contact Management</h1>
+            <p>Import, organize and manage your resort contacts.</p>
+        </section>
+
+
+        <!-- FLASH MESSAGES -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="notice {{ category }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+
+        <!-- ADD CONTACT MANUALLY -->
+        <section class="content-card">
+
+            <div class="section-heading">
+                <div>
+                    <h2>Add New Contact</h2>
+                    <p>Enter an individual resort contact directly.</p>
+                </div>
+            </div>
+
+            <form action="{{ url_for('add_contact') }}"
+                  method="POST"
+                  class="upload-form">
+
+                <div class="form-group">
+                    <label for="name">Contact Name</label>
+                    <input
+                        type="text"
+                        id="name"
+                        name="name"
+                        placeholder="Enter contact name"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="resort">Resort / Hotel Name</label>
+                    <input
+                        type="text"
+                        id="resort"
+                        name="resort"
+                        placeholder="Enter resort or hotel name"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email Address</label>
+                    <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        placeholder="Enter email address"
+                        required
+                    >
+                </div>
+
+                <button type="submit" class="primary-button">
+                    + Add Contact
+                </button>
+
+                <small>
+                    New contacts are saved as Needs review.
+                    Verify email permission separately before approval.
+                </small>
+
+            </form>
+
+        </section>
+
+
+        <!-- IMPORT CONTACTS -->
+        <section class="content-card">
+
+            <div class="section-heading">
+                <div>
+                    <h2>Import Contacts</h2>
+                    <p>Upload multiple resort and hotel contacts at once.</p>
+                </div>
+            </div>
+
+            <form action="{{ url_for('upload') }}"
+                  method="POST"
+                  enctype="multipart/form-data"
+                  class="upload-form">
+
+                <div class="form-group">
+                    <label for="file">Select CSV or Excel File</label>
+
+                    <input
+                        type="file"
+                        id="file"
+                        name="file"
+                        accept=".csv,.xlsx"
+                        required
+                    >
+
+                    <small>Required columns: Name, Resort, Email</small>
+                </div>
+
+                <button type="submit" class="primary-button">
+                    Import Contacts
+                </button>
+
+            </form>
+
+        </section>
+
+
+        <!-- SAVED CONTACTS -->
+        <section class="content-card">
+
+            <div class="section-heading">
+                <div>
+                    <h2>Saved Contacts</h2>
+                    <p>Search and manage your stored contacts.</p>
+                </div>
+            </div>
+
+
+            <!-- SEARCH AND FILTER -->
+            <form method="GET"
+                  action="{{ url_for('contacts') }}"
+                  class="contact-filters">
+
+                <input
+                    type="text"
+                    name="search"
+                    placeholder="Search name, resort or email..."
+                    value="{{ search }}"
+                >
+
+                <select name="status">
+
+                    <option value="">All Review Statuses</option>
+
+                    {% for option in status_options %}
+                        <option
+                            value="{{ option.review_status }}"
+                            {% if selected_status == option.review_status %}selected{% endif %}
+                        >
+                            {{ option.review_status }}
+                        </option>
+                    {% endfor %}
+
+                </select>
+
+                <button type="submit" class="primary-button">
+                    Search
+                </button>
+
+                <a href="{{ url_for('contacts') }}" class="clear-button">
+                    Clear
+                </a>
+
+            </form>
+
+
+            <p class="filter-count">
+                Showing {{ contacts|length }} of {{ total_contacts }} contacts
+            </p>
+
+
+            {% if contacts %}
+
+            <div class="table-wrap">
+
+                <table>
+
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Resort</th>
+                            <th>Email</th>
+                            <th>Review Status</th>
+                            <th>Email Permission</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+
+
+                    <tbody>
+
+                        {% for contact in contacts %}
+
+                        <tr>
+
+                            <td>{{ contact.name }}</td>
+
+                            <td>{{ contact.resort }}</td>
+
+                            <td>{{ contact.email }}</td>
+
+
+                            <!-- REVIEW STATUS -->
+                            <td>
+                                <span class="status-review">
+                                    {{ contact.review_status }}
+                                </span>
+                            </td>
+
+
+                            <!-- EMAIL PERMISSION -->
+                            <td>
+
+                                {% if contact.email_consent == 1 and contact.unsubscribed == 0 %}
+
+                                    <span class="status-review">
+                                        Approved
+                                    </span>
+
+                                {% elif contact.unsubscribed == 1 %}
+
+                                    <span class="status-review">
+                                        Unsubscribed
+                                    </span>
+
+                                {% else %}
+
+                                    <span class="status-review">
+                                        Not approved
+                                    </span>
+
+                                {% endif %}
+
+
+                                {% if contact.unsubscribed == 0 %}
+
+                                <form
+                                    method="POST"
+                                    action="{{ url_for('update_email_permission', contact_id=contact.id) }}"
+                                    onsubmit="return confirm('Only approve this contact if their email permission has been independently verified. Continue?');"
+                                >
+
+                                    {% if contact.email_consent == 1 %}
+
+                                        <input
+                                            type="hidden"
+                                            name="permission"
+                                            value="0"
+                                        >
+
+                                        <button
+                                            type="submit"
+                                            class="delete-button"
+                                        >
+                                            Disable
+                                        </button>
+
+                                    {% else %}
+
+                                        <input
+                                            type="hidden"
+                                            name="permission"
+                                            value="1"
+                                        >
+
+                                        <button
+                                            type="submit"
+                                            class="primary-button"
+                                        >
+                                            Approve
+                                        </button>
+
+                                    {% endif %}
+
+                                </form>
+
+                                {% endif %}
+
+                            </td>
+
+
+                            <!-- DELETE CONTACT -->
+                            <td>
+
+                                <form
+                                    method="POST"
+                                    action="{{ url_for('delete_contact', contact_id=contact.id) }}"
+                                    onsubmit="return confirm('Delete this contact?');"
+                                >
+
+                                    <button
+                                        type="submit"
+                                        class="delete-button"
+                                    >
+                                        Delete
+                                    </button>
+
+                                </form>
+
+                            </td>
+
+                        </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+
+            {% else %}
+
+            <div class="empty-state">
+                <h3>No contacts found</h3>
+                <p>Try another search or import a contact file.</p>
+            </div>
+
+            {% endif %}
+
+        </section>
+
+    </main>
+
+</div>
+
+</body>
+</html>

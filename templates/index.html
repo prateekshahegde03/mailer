@@ -1,0 +1,112 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TREC Mailer | Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="app">
+
+    <aside class="sidebar">
+        <div class="logo">
+            <h2>TREC<span>MAILER</span></h2>
+            <p>Business Outreach Platform</p>
+        </div>
+
+        <nav>
+            <a href="{{ url_for('dashboard') }}" class="active">Dashboard</a>
+            <a href="{{ url_for('contacts') }}">Contacts</a>
+            <a href="{{ url_for('campaigns') }}">Campaigns</a>
+        </nav>
+
+        <div class="sidebar-footer">TREC Business Tools</div>
+    </aside>
+
+    <main class="main">
+
+        <header class="topbar">
+            <h2>Dashboard</h2>
+            <div class="profile">Admin</div>
+        </header>
+
+        <section class="welcome">
+            <p class="eyebrow">TREC OUTREACH PLATFORM</p>
+            <h1>Welcome to TREC Mailer</h1>
+            <p>Manage resort contacts and prepare your business outreach campaigns.</p>
+        </section>
+
+        <section class="stats-grid">
+
+            <div class="stat-card">
+                <div class="stat-icon">♙</div>
+                <p>Total Contacts</p>
+                <h2>{{ total_contacts }}</h2>
+                <small>Stored contacts</small>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">✉</div>
+                <p>Total Campaigns</p>
+                <h2>{{ total_campaigns }}</h2>
+                <small>Created campaigns</small>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">↗</div>
+                <p>Emails Sent</p>
+                <h2>0</h2>
+                <small>Sending not configured</small>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">↩</div>
+                <p>Replies</p>
+                <h2>0</h2>
+                <small>Tracking not configured</small>
+            </div>
+
+        </section>
+
+        <section class="quick-actions">
+            <div class="section-heading">
+                <div>
+                    <h2>Quick Actions</h2>
+                    <p>Choose what you want to work on.</p>
+                </div>
+            </div>
+
+            <div class="actions-grid">
+
+                <a href="{{ url_for('contacts') }}" class="action-card">
+                    <div class="action-icon">♙</div>
+                    <h3>Import Contacts</h3>
+                    <p>Upload resort and hotel contacts using Excel or CSV files.</p>
+                    <span>Open Contacts →</span>
+                </a>
+
+                <a href="{{ url_for('campaigns') }}" class="action-card">
+                    <div class="action-icon">✉</div>
+                    <h3>Create Campaign</h3>
+                    <p>Prepare an email campaign and choose its recipients.</p>
+                    <span>Open Campaigns →</span>
+                </a>
+
+                <a href="{{ url_for('campaigns') }}" class="action-card">
+                    <div class="action-icon">▤</div>
+                    <h3>Campaign History</h3>
+                    <p>View your saved campaign drafts.</p>
+                    <span>View Campaigns →</span>
+                </a>
+
+            </div>
+        </section>
+
+    </main>
+</div>
+
+</body>
+</html>
