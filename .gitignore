@@ -1,4 +1,5 @@
 .env
-trec_mailer.db
+*.db
 __pycache__/
-*.pyc
+venv/
+.venv/

@@ -1,0 +1,53 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TREC-Mailer | Admin Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="app">
+    <main class="main-content">
+        <section class="content-card">
+            <h1>TREC-Mailer</h1>
+            <h2>Admin Login</h2>
+            <p>Sign in to access your marketing dashboard.</p>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% for category, message in messages %}
+                    <p class="{{ category }}">{{ message }}</p>
+                {% endfor %}
+            {% endwith %}
+
+            <form method="POST" action="{{ url_for('login', next=request.args.get('next', '')) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <label for="username">Username</label>
+                <input
+                    type="text"
+                    id="username"
+                    name="username"
+                    autocomplete="username"
+                    required
+                >
+
+                <label for="password">Password</label>
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    autocomplete="current-password"
+                    required
+                >
+
+                <button type="submit">Login</button>
+            </form>
+        </section>
+    </main>
+</div>
+
+</body>
+</html>

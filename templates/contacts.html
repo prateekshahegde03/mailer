@@ -28,7 +28,6 @@
         <div class="sidebar-footer">TREC Business Tools</div>
     </aside>
 
-
     <!-- MAIN CONTENT -->
     <main class="main">
 
@@ -37,13 +36,11 @@
             <div class="profile">Admin</div>
         </header>
 
-
         <!-- PAGE HEADING -->
         <section class="page-heading">
             <h1>Contact Management</h1>
             <p>Import, organize and manage your resort contacts.</p>
         </section>
-
 
         <!-- FLASH MESSAGES -->
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -55,7 +52,6 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
-
 
         <!-- ADD CONTACT MANUALLY -->
         <section class="content-card">
@@ -70,6 +66,8 @@
             <form action="{{ url_for('add_contact') }}"
                   method="POST"
                   class="upload-form">
+
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                 <div class="form-group">
                     <label for="name">Contact Name</label>
@@ -117,7 +115,6 @@
 
         </section>
 
-
         <!-- IMPORT CONTACTS -->
         <section class="content-card">
 
@@ -132,6 +129,8 @@
                   method="POST"
                   enctype="multipart/form-data"
                   class="upload-form">
+
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                 <div class="form-group">
                     <label for="file">Select CSV or Excel File</label>
@@ -155,7 +154,6 @@
 
         </section>
 
-
         <!-- SAVED CONTACTS -->
         <section class="content-card">
 
@@ -165,7 +163,6 @@
                     <p>Search and manage your stored contacts.</p>
                 </div>
             </div>
-
 
             <!-- SEARCH AND FILTER -->
             <form method="GET"
@@ -180,7 +177,6 @@
                 >
 
                 <select name="status">
-
                     <option value="">All Review Statuses</option>
 
                     {% for option in status_options %}
@@ -191,7 +187,6 @@
                             {{ option.review_status }}
                         </option>
                     {% endfor %}
-
                 </select>
 
                 <button type="submit" class="primary-button">
@@ -204,11 +199,9 @@
 
             </form>
 
-
             <p class="filter-count">
                 Showing {{ contacts|length }} of {{ total_contacts }} contacts
             </p>
-
 
             {% if contacts %}
 
@@ -227,7 +220,6 @@
                         </tr>
                     </thead>
 
-
                     <tbody>
 
                         {% for contact in contacts %}
@@ -235,11 +227,8 @@
                         <tr>
 
                             <td>{{ contact.name }}</td>
-
                             <td>{{ contact.resort }}</td>
-
                             <td>{{ contact.email }}</td>
-
 
                             <!-- REVIEW STATUS -->
                             <td>
@@ -247,7 +236,6 @@
                                     {{ contact.review_status }}
                                 </span>
                             </td>
-
 
                             <!-- EMAIL PERMISSION -->
                             <td>
@@ -272,7 +260,6 @@
 
                                 {% endif %}
 
-
                                 {% if contact.unsubscribed == 0 %}
 
                                 <form
@@ -280,6 +267,8 @@
                                     action="{{ url_for('update_email_permission', contact_id=contact.id) }}"
                                     onsubmit="return confirm('Only approve this contact if their email permission has been independently verified. Continue?');"
                                 >
+
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                                     {% if contact.email_consent == 1 %}
 
@@ -319,7 +308,6 @@
 
                             </td>
 
-
                             <!-- DELETE CONTACT -->
                             <td>
 
@@ -328,6 +316,8 @@
                                     action="{{ url_for('delete_contact', contact_id=contact.id) }}"
                                     onsubmit="return confirm('Delete this contact?');"
                                 >
+
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                                     <button
                                         type="submit"
@@ -349,7 +339,6 @@
                 </table>
 
             </div>
-
 
             {% else %}
 

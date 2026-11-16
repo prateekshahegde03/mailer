@@ -4,17 +4,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TREC Mailer | Unsubscribe</title>
+    <title>TREC-Mailer | Unsubscribe</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <div class="app">
-        <main class="main">
-            <section class="content-card">
-                <h1>Email Preferences</h1>
-                <p>{{ message }}</p>
-            </section>
-        </main>
-    </div>
+
+<div class="app">
+    <main class="main-content">
+        <section class="content-card">
+            <h1>TREC-Mailer</h1>
+            <h2>Email Preferences</h2>
+
+            <p>{{ message }}</p>
+
+            {% if show_confirmation %}
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <button type="submit">
+                        Confirm Unsubscribe
+                    </button>
+                </form>
+            {% endif %}
+        </section>
+    </main>
+</div>
+
 </body>
 </html>

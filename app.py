@@ -3,17 +3,20 @@ import os
 import re
 import time
 import sqlite3
+import hmac
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 import pandas as pd
 from flask import (
     Flask, render_template, request, redirect,
-    url_for, flash
+    url_for, flash, session
 )
 from flask_mail import Mail, Message
+from flask_wtf.csrf import CSRFProtect
 from dotenv import load_dotenv
-from itsdangerous import URLSafeSerializer, BadSignature
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from functools import wraps
 
 
 # ==========================================
@@ -22,12 +25,39 @@ from itsdangerous import URLSafeSerializer, BadSignature
 
 load_dotenv()
 
+SECRET_KEY = os.getenv("SECRET_KEY")
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY is missing from environment variables.")
+
+if not ADMIN_USERNAME or not ADMIN_PASSWORD:
+    raise RuntimeError(
+        "ADMIN_USERNAME and ADMIN_PASSWORD must be configured."
+    )
+
 app = Flask(__name__)
-app.secret_key = os.getenv(
-    "SECRET_KEY", "trec-mailer-development-key"
-)
+app.secret_key = SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 
+# Secure session cookie settings
+is_production = (
+    os.getenv("RENDER") is not None
+    or os.getenv("FLASK_ENV") == "production"
+)
+
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=is_production,
+    PERMANENT_SESSION_LIFETIME=60 * 60 * 8
+)
+
+# CSRF protection for all POST forms
+csrf = CSRFProtect(app)
+
+# SMTP configuration
 app.config["MAIL_SERVER"] = os.getenv(
     "MAIL_SERVER", "smtp.hostinger.com"
 )
@@ -49,12 +79,108 @@ SEND_DELAY_SECONDS = 2
 
 mail = Mail(app)
 
-DB_PATH = Path(__file__).resolve().parent / "trec_mailer.db"
+DB_PATH = Path(
+    os.getenv(
+        "DB_PATH",
+        str(Path(__file__).resolve().parent / "trec_mailer.db")
+    )
+)
 
-unsubscribe_serializer = URLSafeSerializer(
-    app.secret_key,
+unsubscribe_serializer = URLSafeTimedSerializer(
+    SECRET_KEY,
     salt="trec-mailer-unsubscribe"
 )
+
+
+# ==========================================
+# AUTHENTICATION
+# ==========================================
+
+def login_required(view):
+    @wraps(view)
+    def wrapped_view(*args, **kwargs):
+        if not session.get("admin_logged_in"):
+            return redirect(
+                url_for("login", next=request.url)
+            )
+        return view(*args, **kwargs)
+    return wrapped_view
+
+
+@app.before_request
+def require_admin_login():
+    # Public pages and static assets
+    allowed_endpoints = {
+        "login",
+        "logout",
+        "unsubscribe",
+        "static"
+    }
+
+    if request.endpoint in allowed_endpoints:
+        return None
+
+    if not session.get("admin_logged_in"):
+        return redirect(
+            url_for("login", next=request.url)
+        )
+
+    return None
+
+
+def is_safe_redirect_target(target):
+    if not target:
+        return False
+
+    host_url = urlparse(request.host_url)
+    redirect_url = urlparse(urljoin(request.host_url, target))
+
+    return (
+        redirect_url.scheme in ("http", "https")
+        and host_url.netloc == redirect_url.netloc
+    )
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if session.get("admin_logged_in"):
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        username = request.form.get("username", "")
+        password = request.form.get("password", "")
+
+        username_ok = hmac.compare_digest(
+            username.encode("utf-8"),
+            ADMIN_USERNAME.encode("utf-8")
+        )
+        password_ok = hmac.compare_digest(
+            password.encode("utf-8"),
+            ADMIN_PASSWORD.encode("utf-8")
+        )
+
+        if username_ok and password_ok:
+            session.clear()
+            session["admin_logged_in"] = True
+            session.permanent = True
+
+            next_url = request.args.get("next")
+
+            if is_safe_redirect_target(next_url):
+                return redirect(next_url)
+
+            return redirect(url_for("dashboard"))
+
+        flash("Invalid username or password.", "error")
+
+    return render_template("login.html")
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    flash("You have been logged out.", "success")
+    return redirect(url_for("login"))
 
 
 # ==========================================
@@ -62,7 +188,9 @@ unsubscribe_serializer = URLSafeSerializer(
 # ==========================================
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -71,166 +199,173 @@ def get_db():
 def initialize_db():
     conn = get_db()
 
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS contacts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            resort TEXT,
-            email TEXT UNIQUE,
-            review_status TEXT DEFAULT 'Needs review'
-        )
-    """)
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS campaigns (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            campaign_name TEXT,
-            subject TEXT,
-            body TEXT,
-            status TEXT DEFAULT 'Draft',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS campaign_recipients (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            campaign_id INTEGER NOT NULL,
-            contact_id INTEGER NOT NULL,
-            FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
-            FOREIGN KEY (contact_id) REFERENCES contacts(id),
-            UNIQUE(campaign_id, contact_id)
-        )
-    """)
-
-    # Contact table migrations
-    contact_columns = {
-        row["name"] for row in
-        conn.execute("PRAGMA table_info(contacts)").fetchall()
-    }
-
-    contact_additions = {
-        "review_status": "TEXT DEFAULT 'Needs review'",
-        "email_consent": "INTEGER DEFAULT 0",
-        "unsubscribed": "INTEGER DEFAULT 0"
-    }
-
-    for column, definition in contact_additions.items():
-        if column not in contact_columns:
-            conn.execute(
-                f"ALTER TABLE contacts ADD COLUMN {column} {definition}"
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS contacts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                resort TEXT,
+                email TEXT UNIQUE,
+                review_status TEXT DEFAULT 'Needs review'
             )
+        """)
 
-    # Campaign table migrations
-    campaign_columns = {
-        row["name"] for row in
-        conn.execute("PRAGMA table_info(campaigns)").fetchall()
-    }
-
-    campaign_additions = {
-        "name": "TEXT",
-        "campaign_name": "TEXT",
-        "subject": "TEXT",
-        "body": "TEXT",
-        "status": "TEXT DEFAULT 'Draft'",
-        "created_at": "TIMESTAMP"
-    }
-
-    for column, definition in campaign_additions.items():
-        if column not in campaign_columns:
-            conn.execute(
-                f"ALTER TABLE campaigns ADD COLUMN {column} {definition}"
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS campaigns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                campaign_name TEXT,
+                subject TEXT,
+                body TEXT,
+                status TEXT DEFAULT 'Draft',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-
-    campaign_columns = {
-        row["name"] for row in
-        conn.execute("PRAGMA table_info(campaigns)").fetchall()
-    }
-
-    if "title" in campaign_columns:
-        conn.execute("""
-            UPDATE campaigns
-            SET campaign_name = title
-            WHERE (campaign_name IS NULL OR campaign_name = '')
-              AND title IS NOT NULL
         """)
 
-    if "email_subject" in campaign_columns:
         conn.execute("""
-            UPDATE campaigns
-            SET subject = email_subject
-            WHERE (subject IS NULL OR subject = '')
-              AND email_subject IS NOT NULL
+            CREATE TABLE IF NOT EXISTS campaign_recipients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                campaign_id INTEGER NOT NULL,
+                contact_id INTEGER NOT NULL,
+                FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
+                FOREIGN KEY (contact_id) REFERENCES contacts(id),
+                UNIQUE(campaign_id, contact_id)
+            )
         """)
 
-    if "email_message" in campaign_columns:
+        # Contact table migrations
+        contact_columns = {
+            row["name"] for row in
+            conn.execute("PRAGMA table_info(contacts)").fetchall()
+        }
+
+        contact_additions = {
+            "review_status": "TEXT DEFAULT 'Needs review'",
+            "email_consent": "INTEGER DEFAULT 0",
+            "unsubscribed": "INTEGER DEFAULT 0"
+        }
+
+        for column, definition in contact_additions.items():
+            if column not in contact_columns:
+                conn.execute(
+                    f"ALTER TABLE contacts ADD COLUMN {column} {definition}"
+                )
+
+        # Campaign table migrations
+        campaign_columns = {
+            row["name"] for row in
+            conn.execute("PRAGMA table_info(campaigns)").fetchall()
+        }
+
+        campaign_additions = {
+            "name": "TEXT",
+            "campaign_name": "TEXT",
+            "subject": "TEXT",
+            "body": "TEXT",
+            "status": "TEXT DEFAULT 'Draft'",
+            "created_at": "TIMESTAMP"
+        }
+
+        for column, definition in campaign_additions.items():
+            if column not in campaign_columns:
+                conn.execute(
+                    f"ALTER TABLE campaigns ADD COLUMN {column} {definition}"
+                )
+
+        campaign_columns = {
+            row["name"] for row in
+            conn.execute("PRAGMA table_info(campaigns)").fetchall()
+        }
+
+        if "title" in campaign_columns:
+            conn.execute("""
+                UPDATE campaigns
+                SET campaign_name = title
+                WHERE (campaign_name IS NULL OR campaign_name = '')
+                  AND title IS NOT NULL
+            """)
+
+        if "email_subject" in campaign_columns:
+            conn.execute("""
+                UPDATE campaigns
+                SET subject = email_subject
+                WHERE (subject IS NULL OR subject = '')
+                  AND email_subject IS NOT NULL
+            """)
+
+        if "email_message" in campaign_columns:
+            conn.execute("""
+                UPDATE campaigns
+                SET body = email_message
+                WHERE (body IS NULL OR body = '')
+                  AND email_message IS NOT NULL
+            """)
+
         conn.execute("""
             UPDATE campaigns
-            SET body = email_message
-            WHERE (body IS NULL OR body = '')
-              AND email_message IS NOT NULL
+            SET campaign_name = name
+            WHERE campaign_name IS NULL OR campaign_name = ''
         """)
 
-    conn.execute("""
-        UPDATE campaigns
-        SET campaign_name = name
-        WHERE campaign_name IS NULL OR campaign_name = ''
-    """)
+        conn.execute("""
+            UPDATE campaigns
+            SET name = campaign_name
+            WHERE name IS NULL OR name = ''
+        """)
 
-    conn.execute("""
-        UPDATE campaigns
-        SET name = campaign_name
-        WHERE name IS NULL OR name = ''
-    """)
+        conn.execute("""
+            UPDATE campaigns
+            SET campaign_name = 'Untitled campaign'
+            WHERE campaign_name IS NULL OR campaign_name = ''
+        """)
 
-    conn.execute("""
-        UPDATE campaigns
-        SET campaign_name = 'Untitled campaign'
-        WHERE campaign_name IS NULL OR campaign_name = ''
-    """)
+        conn.execute("""
+            UPDATE campaigns SET name = campaign_name
+            WHERE name IS NULL OR name = ''
+        """)
 
-    conn.execute("""
-        UPDATE campaigns SET name = campaign_name
-        WHERE name IS NULL OR name = ''
-    """)
+        conn.execute("""
+            UPDATE campaigns SET subject = ''
+            WHERE subject IS NULL
+        """)
 
-    conn.execute("""
-        UPDATE campaigns SET subject = ''
-        WHERE subject IS NULL
-    """)
+        conn.execute("""
+            UPDATE campaigns SET body = ''
+            WHERE body IS NULL
+        """)
 
-    conn.execute("""
-        UPDATE campaigns SET body = ''
-        WHERE body IS NULL
-    """)
+        conn.execute("""
+            UPDATE campaigns SET status = 'Draft'
+            WHERE status IS NULL OR status = ''
+        """)
 
-    conn.execute("""
-        UPDATE campaigns SET status = 'Draft'
-        WHERE status IS NULL OR status = ''
-    """)
+        conn.execute("""
+            UPDATE campaigns SET created_at = CURRENT_TIMESTAMP
+            WHERE created_at IS NULL
+        """)
 
-    conn.execute("""
-        UPDATE campaigns SET created_at = CURRENT_TIMESTAMP
-        WHERE created_at IS NULL
-    """)
+        # Delivery history
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS delivery_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                campaign_id INTEGER NOT NULL,
+                contact_id INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                error_message TEXT,
+                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
+                FOREIGN KEY (contact_id) REFERENCES contacts(id)
+            )
+        """)
 
-    # Delivery history. Each row represents one sending attempt.
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS delivery_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            campaign_id INTEGER NOT NULL,
-            contact_id INTEGER NOT NULL,
-            status TEXT NOT NULL,
-            error_message TEXT,
-            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
-            FOREIGN KEY (contact_id) REFERENCES contacts(id)
-        )
-    """)
+        conn.commit()
 
-    conn.commit()
-    conn.close()
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
 
 # ==========================================
@@ -264,7 +399,10 @@ def get_unsubscribe_url(contact):
         "email": contact["email"]
     })
 
-    return f"{PUBLIC_BASE_URL}{url_for('unsubscribe', token=token)}"
+    return (
+        f"{PUBLIC_BASE_URL}"
+        f"{url_for('unsubscribe', token=token)}"
+    )
 
 
 def public_url_is_valid():
@@ -372,7 +510,7 @@ def contacts():
 
 
 # ==========================================
-# ADD CONTACT MANUALLY
+# ADD CONTACT
 # ==========================================
 
 @app.route("/contacts/add", methods=["POST"])
@@ -381,12 +519,10 @@ def add_contact():
     resort = request.form.get("resort", "").strip()
     email = request.form.get("email", "").strip().lower()
 
-    # Check required fields
     if not name or not resort or not email:
         flash("Please fill in all contact details.", "error")
         return redirect(url_for("contacts"))
 
-    # Validate email
     if not valid_email(email):
         flash("Please enter a valid email address.", "error")
         return redirect(url_for("contacts"))
@@ -394,7 +530,6 @@ def add_contact():
     conn = get_db()
 
     try:
-        # Check for duplicate email (case-insensitive)
         existing = conn.execute("""
             SELECT id FROM contacts
             WHERE LOWER(email) = LOWER(?)
@@ -404,7 +539,6 @@ def add_contact():
             flash("This email address already exists.", "error")
             return redirect(url_for("contacts"))
 
-        # Save new contact without marketing permission
         conn.execute("""
             INSERT INTO contacts
             (name, resort, email, review_status,
@@ -413,7 +547,6 @@ def add_contact():
         """, (name, resort, email))
 
         conn.commit()
-
         flash("Contact added successfully!", "success")
 
     except sqlite3.IntegrityError:
@@ -458,8 +591,6 @@ def update_email_permission(contact_id):
         flash("Contact not found.", "error")
         return redirect(url_for("contacts"))
 
-    # Permission can only be enabled when the organization
-    # has independently verified the contact's permission.
     if permission == "1":
         conn.execute("""
             UPDATE contacts
@@ -572,6 +703,7 @@ def upload():
                     VALUES (?, ?, ?, 'Needs review', 0, 0)
                 """, (name, resort, email))
                 added += 1
+
             except sqlite3.IntegrityError:
                 skipped += 1
 
@@ -801,7 +933,7 @@ def create_campaign():
 
 
 # ==========================================
-# SEND CAMPAIGN - FINAL CONFIRMATION REQUIRED
+# SEND CAMPAIGN
 # ==========================================
 
 @app.route("/campaigns/<int:campaign_id>/send", methods=["POST"])
@@ -816,7 +948,7 @@ def send_campaign(campaign_id):
     if not public_url_is_valid():
         flash(
             "Sending is disabled. Configure a public HTTPS "
-            "unsubscribe URL in your .env file first.",
+            "unsubscribe URL first.",
             "error"
         )
         return redirect(
@@ -853,7 +985,6 @@ def send_campaign(campaign_id):
         flash("This campaign has no recipients.", "error")
         return redirect(url_for("campaigns"))
 
-    # Do not resend a campaign that is already completed.
     already_sent = conn.execute("""
         SELECT COUNT(*)
         FROM delivery_logs
@@ -876,9 +1007,8 @@ def send_campaign(campaign_id):
     skipped = 0
 
     try:
-        for contact in recipients:
+        for index, contact in enumerate(recipients):
 
-            # Check for successful previous delivery.
             previous = conn.execute("""
                 SELECT id FROM delivery_logs
                 WHERE campaign_id = ?
@@ -891,7 +1021,6 @@ def send_campaign(campaign_id):
                 skipped += 1
                 continue
 
-            # Explicit permission and unsubscribe checks.
             if (
                 contact["email_consent"] != 1
                 or contact["unsubscribed"] == 1
@@ -978,8 +1107,7 @@ def send_campaign(campaign_id):
                 conn.commit()
                 failed += 1
 
-            # Pause between individual sends.
-            if contact != recipients[-1]:
+            if index < len(recipients) - 1:
                 time.sleep(SEND_DELAY_SECONDS)
 
         if sent and failed == 0 and skipped == 0:
@@ -1058,14 +1186,36 @@ def campaign_history(campaign_id):
 # UNSUBSCRIBE
 # ==========================================
 
-@app.route("/unsubscribe/<token>")
+@app.route("/unsubscribe/<token>", methods=["GET", "POST"])
 def unsubscribe(token):
     try:
-        data = unsubscribe_serializer.loads(token)
-    except BadSignature:
+        data = unsubscribe_serializer.loads(
+            token,
+            max_age=60 * 60 * 24 * 180
+        )
+
+    except (BadSignature, SignatureExpired):
         return render_template(
             "unsubscribe.html",
-            message="This unsubscribe link is invalid or expired."
+            message="This unsubscribe link is invalid or expired.",
+            show_confirmation=False
+        )
+
+    if not isinstance(data, dict):
+        return render_template(
+            "unsubscribe.html",
+            message="This unsubscribe link is invalid.",
+            show_confirmation=False
+        )
+
+    contact_id = data.get("contact_id")
+    email = data.get("email")
+
+    if not isinstance(contact_id, int) or not isinstance(email, str):
+        return render_template(
+            "unsubscribe.html",
+            message="This unsubscribe link is invalid.",
+            show_confirmation=False
         )
 
     conn = get_db()
@@ -1073,28 +1223,40 @@ def unsubscribe(token):
     contact = conn.execute("""
         SELECT * FROM contacts
         WHERE id = ? AND email = ?
-    """, (data["contact_id"], data["email"])).fetchone()
+    """, (contact_id, email)).fetchone()
 
     if contact is None:
         conn.close()
         return render_template(
             "unsubscribe.html",
-            message="We could not find this contact."
+            message="We could not find this contact.",
+            show_confirmation=False
         )
 
-    conn.execute("""
-        UPDATE contacts
-        SET unsubscribed = 1,
-            email_consent = 0
-        WHERE id = ?
-    """, (contact["id"],))
+    if request.method == "POST":
+        conn.execute("""
+            UPDATE contacts
+            SET unsubscribed = 1,
+                email_consent = 0
+            WHERE id = ?
+        """, (contact["id"],))
 
-    conn.commit()
+        conn.commit()
+        conn.close()
+
+        return render_template(
+            "unsubscribe.html",
+            message="You have been unsubscribed from TREC marketing emails.",
+            show_confirmation=False
+        )
+
     conn.close()
 
     return render_template(
         "unsubscribe.html",
-        message="You have been unsubscribed from TREC marketing emails."
+        message="Would you like to unsubscribe from TREC marketing emails?",
+        show_confirmation=True,
+        token=token
     )
 
 
@@ -1115,7 +1277,7 @@ def smtp_test():
             not app.config["MAIL_USERNAME"]
             or not app.config["MAIL_PASSWORD"]
         ):
-            flash("SMTP username or password is missing from .env.", "error")
+            flash("SMTP username or password is missing.", "error")
             return redirect(url_for("smtp_test"))
 
         try:
@@ -1146,17 +1308,23 @@ def smtp_test():
 
 
 # ==========================================
-# RUN APPLICATION
+# INITIALIZE DATABASE FOR LOCAL AND GUNICORN
+# ==========================================
+
+initialize_db()
+
+
+# ==========================================
+# RUN APPLICATION LOCALLY
 # ==========================================
 
 if __name__ == "__main__":
-    print("STEP 1: Starting Flask")
-
-    initialize_db()
-
-    print("STEP 2: Database initialized")
+    print("TREC-Mailer starting...")
+    print("Database initialized.")
 
     app.run(
+        host="127.0.0.1",
+        port=int(os.getenv("PORT", 5000)),
         debug=False,
         use_reloader=False
     )

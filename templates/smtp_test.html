@@ -1,37 +1,77 @@
 
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TREC-Mailer SMTP Test</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
-    <h2>SMTP Connection Test</h2>
+    <div class="app">
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% for category, message in messages %}
-            <p>{{ message }}</p>
-        {% endfor %}
-    {% endwith %}
+        <main class="main">
 
-    <form method="POST">
+            <section class="page-heading">
+                <h1>SMTP Connection Test</h1>
+                <p>Check whether TREC-Mailer can send emails successfully.</p>
+            </section>
 
-        <label>Test recipient email:</label>
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="notice {{ category }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
 
-        <input
-            type="email"
-            name="recipient"
-            placeholder="Enter your email"
-            required
-        >
+            <section class="content-card">
 
-        <button type="submit">
-            Send Test Email
-        </button>
+                <div class="section-heading">
+                    <div>
+                        <h2>Send Test Email</h2>
+                        <p>Enter an email address you control.</p>
+                    </div>
+                </div>
 
-    </form>
+                <form method="POST" action="{{ url_for('smtp_test') }}" class="upload-form">
 
-    <a href="/">Back to Dashboard</a>
+                    <input
+                        type="hidden"
+                        name="csrf_token"
+                        value="{{ csrf_token() }}"
+                    >
+
+                    <div class="form-group">
+                        <label for="recipient">Test Recipient Email</label>
+
+                        <input
+                            type="email"
+                            id="recipient"
+                            name="recipient"
+                            placeholder="Enter your email address"
+                            required
+                        >
+                    </div>
+
+                    <button type="submit" class="primary-button">
+                        Send Test Email
+                    </button>
+
+                </form>
+
+            </section>
+
+            <a href="{{ url_for('dashboard') }}" class="clear-button">
+                Back to Dashboard
+            </a>
+
+        </main>
+
+    </div>
 
 </body>
 </html>
