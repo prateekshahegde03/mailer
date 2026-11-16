@@ -228,7 +228,7 @@
 
                 <form method="POST"
                       action="{{ url_for('send_campaign', campaign_id=campaign.id) }}"
-                      onsubmit="return confirm('Have you reviewed the recipients and verified their permission? Send this campaign now?');">
+                      onsubmit="return true;">
 
                     <!-- CSRF TOKEN -->
                     <input type="hidden"
