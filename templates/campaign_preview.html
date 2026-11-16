@@ -233,6 +233,11 @@
                         'Have you reviewed the recipients and verified their permission? Send this campaign now?'
                       );">
 
+                    <!-- CSRF TOKEN -->
+                    <input type="hidden"
+                           name="csrf_token"
+                           value="{{ csrf_token() }}">
+
                     <input type="hidden"
                            name="confirm_send"
                            value="yes">
