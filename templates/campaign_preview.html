@@ -60,7 +60,7 @@
         </div>
 
         <!-- CAMPAIGN DETAILS -->
-        <section class="content-card">
+        <section class="content-card" id="campaign-details">
 
             <div class="section-heading">
                 <div>
@@ -126,7 +126,8 @@
 
             {% for preview in previews %}
 
-                <section class="content-card email-preview-card">
+                <section class="content-card email-preview-card"
+                         id="preview-{{ loop.index }}">
 
                     <div class="section-heading">
                         <div>
@@ -210,7 +211,7 @@
         <!-- FINAL SEND CONFIRMATION -->
         {% if previews and eligible_count > 0 %}
 
-            <section class="content-card">
+            <section class="content-card" id="send-campaign">
 
                 <h2>Ready to Send?</h2>
 
@@ -228,7 +229,7 @@
 
                 <form method="POST"
                       action="{{ url_for('send_campaign', campaign_id=campaign.id) }}"
-                      onsubmit="return true;">
+                      onsubmit="return confirm('Have you reviewed the recipients and verified their permission? Send this campaign now?');">
 
                     <!-- CSRF TOKEN -->
                     <input type="hidden"

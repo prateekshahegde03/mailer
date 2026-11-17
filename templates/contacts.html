@@ -224,7 +224,7 @@
 
                         {% for contact in contacts %}
 
-                        <tr>
+                        <tr id="contact-{{ contact.id }}">
 
                             <td>{{ contact.name }}</td>
                             <td>{{ contact.resort }}</td>
@@ -264,7 +264,7 @@
 
                                 <form
                                     method="POST"
-                                    action="{{ url_for('update_email_permission', contact_id=contact.id) }}"
+                                    action="{{ url_for('update_email_permission', contact_id=contact.id) }}#contact-{{ contact.id }}"
                                     onsubmit="return confirm('Only approve this contact if their email permission has been independently verified. Continue?');"
                                 >
 
