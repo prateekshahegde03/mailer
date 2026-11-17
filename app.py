@@ -1,4 +1,3 @@
-
 import os
 import re
 import time
@@ -12,7 +11,7 @@ from flask import (
     Flask, render_template, request, redirect,
     url_for, flash, session
 )
-from flask_mail import Mail, Message
+import resend
 from flask_wtf.csrf import CSRFProtect
 from dotenv import load_dotenv
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
@@ -24,6 +23,12 @@ from functools import wraps
 # ==========================================
 
 load_dotenv()
+
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL")
+
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
@@ -57,27 +62,9 @@ app.config.update(
 # CSRF protection for all POST forms
 csrf = CSRFProtect(app)
 
-# SMTP configuration
-app.config["MAIL_SERVER"] = os.getenv(
-    "MAIL_SERVER", "smtp.hostinger.com"
-)
-app.config["MAIL_PORT"] = int(os.getenv("MAIL_PORT", 465))
-app.config["MAIL_USE_SSL"] = os.getenv(
-    "MAIL_USE_SSL", "True"
-).lower() == "true"
-app.config["MAIL_USE_TLS"] = os.getenv(
-    "MAIL_USE_TLS", "False"
-).lower() == "true"
-app.config["MAIL_USERNAME"] = os.getenv("MAIL_USERNAME")
-app.config["MAIL_PASSWORD"] = os.getenv("MAIL_PASSWORD")
-app.config["MAIL_DEFAULT_SENDER"] = os.getenv(
-    "MAIL_DEFAULT_SENDER"
-)
-
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 SEND_DELAY_SECONDS = 2
 
-mail = Mail(app)
 
 DB_PATH = Path(
     os.getenv(
@@ -181,6 +168,18 @@ def logout():
     session.clear()
     flash("You have been logged out.", "success")
     return redirect(url_for("login"))
+
+
+def send_email_via_resend(to_email, subject, text_body):
+    if not RESEND_API_KEY or not RESEND_FROM_EMAIL:
+        raise RuntimeError("Resend API configuration is missing.")
+
+    return resend.Emails.send({
+        "from": RESEND_FROM_EMAIL,
+        "to": [to_email],
+        "subject": subject,
+        "text": text_body
+    })
 
 
 # ==========================================
@@ -366,7 +365,6 @@ def initialize_db():
 
     finally:
         conn.close()
-
 
 # ==========================================
 # HELPERS
@@ -758,7 +756,6 @@ def delete_contact(contact_id):
     flash("Contact deleted successfully.", "success")
     return redirect(url_for("contacts"))
 
-
 # ==========================================
 # CAMPAIGNS PAGE
 # ==========================================
@@ -955,8 +952,8 @@ def send_campaign(campaign_id):
             url_for("campaign_preview", campaign_id=campaign_id)
         )
 
-    if not app.config["MAIL_USERNAME"] or not app.config["MAIL_PASSWORD"]:
-        flash("SMTP credentials are missing.", "error")
+    if not RESEND_API_KEY or not RESEND_FROM_EMAIL:
+        flash("Resend email configuration is missing.", "error")
         return redirect(
             url_for("campaign_preview", campaign_id=campaign_id)
         )
@@ -1071,13 +1068,11 @@ def send_campaign(campaign_id):
                     f"{unsubscribe_url}\n"
                 )
 
-                message = Message(
-                    subject=subject,
-                    recipients=[contact["email"]],
-                    body=body
+                send_email_via_resend(
+                    contact["email"],
+                    subject,
+                    body
                 )
-
-                mail.send(message)
 
                 conn.execute("""
                     INSERT INTO delivery_logs
@@ -1101,7 +1096,7 @@ def send_campaign(campaign_id):
                 """, (
                     campaign_id,
                     contact["id"],
-                    "SMTP delivery failed. Check the application log."
+                    "Email delivery failed. Check the application log."
                 ))
 
                 conn.commit()
@@ -1139,7 +1134,6 @@ def send_campaign(campaign_id):
     return redirect(
         url_for("campaign_history", campaign_id=campaign_id)
     )
-
 
 # ==========================================
 # CAMPAIGN DELIVERY HISTORY
@@ -1261,7 +1255,7 @@ def unsubscribe(token):
 
 
 # ==========================================
-# SMTP TEST
+# EMAIL API TEST
 # ==========================================
 
 @app.route("/smtp-test", methods=["GET", "POST"])
@@ -1273,32 +1267,27 @@ def smtp_test():
             flash("Please enter a valid email address.", "error")
             return redirect(url_for("smtp_test"))
 
-        if (
-            not app.config["MAIL_USERNAME"]
-            or not app.config["MAIL_PASSWORD"]
-        ):
-            flash("SMTP username or password is missing.", "error")
+        if not RESEND_API_KEY or not RESEND_FROM_EMAIL:
+            flash("Resend email configuration is missing.", "error")
             return redirect(url_for("smtp_test"))
 
         try:
-            message = Message(
-                subject="TREC-Mailer SMTP Test",
-                recipients=[recipient],
-                body=(
+            send_email_via_resend(
+                recipient,
+                "TREC-Mailer Email API Test",
+                (
                     "Hello!\n\n"
                     "This is a test email from TREC-Mailer.\n"
-                    "Your SMTP integration is working.\n\n"
+                    "Your Resend email integration is working.\n\n"
                     "TREC Team"
                 )
             )
-
-            mail.send(message)
             flash("Test email sent successfully!", "success")
 
         except Exception:
-            app.logger.exception("SMTP test failed")
+            app.logger.exception("Resend email API test failed")
             flash(
-                "Email could not be sent. Check SMTP settings.",
+                "Email could not be sent. Check your Resend configuration and application log.",
                 "error"
             )
 

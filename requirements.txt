@@ -1,6 +1,6 @@
 
 Flask
-Flask-Mail
+resend
 Flask-WTF
 python-dotenv
 pandas
